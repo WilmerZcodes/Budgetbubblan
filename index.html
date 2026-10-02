@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Budgetbubblan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: gradient orb rail on the left, dark graph-paper board filling the rest. Single dark look by design. */
+:root{
+  --grid-bg:#2f3237;
+  --grid-line:rgba(196,201,209,.28);
+  --rail-a:#151826;
+  --rail-b:#2a1d45;
+  --rail-c:#123a4a;
+  --edge:rgba(255,255,255,.10);
+  --ink:#eef0f4;
+  --muted:#9aa1ad;
+  --field:rgba(255,255,255,.06);
+  --danger:#ff5a5f;
+  --focus:#ffc94d;
+  --pig:#f59bbb;
+  --label-ink:#3a2e1a;
+  --pig-ink:#4a1428;
+  --f-ui:"Rubik",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-num:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;overflow:hidden;background:var(--grid-bg);color:var(--ink);font-family:var(--f-ui);
+  -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.app{display:flex;height:100%}
+
+/* ---------- rail ---------- */
+.rail{position:relative;width:172px;flex:none;display:flex;flex-direction:column;z-index:5;
+  background:linear-gradient(165deg,var(--rail-a) 0%,var(--rail-b) 55%,var(--rail-c) 100%);
+  border-right:1px solid var(--edge);box-shadow:6px 0 24px rgba(0,0,0,.35)}
+.rail::after{content:"";position:absolute;inset:0;background:rgba(255,70,80,.18);opacity:0;transition:opacity .15s;pointer-events:none}
+.rail.drop-trash::after{opacity:1}
+.budget,.goals{padding:14px 14px 12px;display:flex;flex-direction:column;gap:6px;border-bottom:1px solid var(--edge)}
+.budget{padding-top:16px}
+.rail label,.left span{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.rail input{width:100%;min-width:0;font:600 14px var(--f-num);padding:8px 10px;border:1px solid rgba(255,255,255,.14);border-radius:10px;background:var(--field);color:var(--ink);-webkit-user-select:text;user-select:text}
+#balance{font-size:15px;padding:9px 10px}
+#goalName{font-family:var(--f-ui);font-weight:500}
+.rail input::placeholder{color:var(--muted);font-weight:500}
+.rail input:focus{outline:2px solid var(--focus);outline-offset:1px}
+.left{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.left strong{font:600 16px var(--f-num);font-variant-numeric:tabular-nums}
+.left.neg strong{color:var(--danger)}
+.goal-row{display:flex;gap:6px}
+.btn.add{flex:none;width:38px;padding:0;font-size:18px;line-height:1;background:linear-gradient(160deg,#ffb3cb,#e86f97);color:#3d0f20;border-color:rgba(255,255,255,.35)}
+.goal-sum{display:flex;flex-direction:column;gap:5px;margin-top:4px}
+.goal-sum p{margin:0;font:500 10.5px var(--f-num);color:var(--muted);font-variant-numeric:tabular-nums}
+.goal-sum p b{color:var(--ink);font-weight:600}
+.bar{height:6px;border-radius:99px;background:rgba(255,255,255,.1);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f59bbb,#ffd36b)}
+.goal-list{list-style:none;margin:2px 0 0;padding:0;display:flex;flex-direction:column;gap:5px;max-height:92px;overflow-y:auto;scrollbar-width:thin}
+.goal-list li{display:grid;grid-template-columns:1fr auto;gap:2px 6px;font-size:11.5px}
+.goal-list li span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.goal-list li em{font:500 11px var(--f-num);font-style:normal;color:var(--muted)}
+.goal-list li .bar{grid-column:1/-1;height:3px}
+.goal-list li.done em{color:#ffd36b}
+.palette{flex:1;min-height:120px;overflow-y:auto;display:flex;flex-direction:column;align-items:center;gap:9px;padding:14px 0;scrollbar-width:thin}
+.pal{display:flex;align-items:center;gap:10px;width:128px}
+.pal .orb{position:relative;flex:none}
+.pal small{font:500 11.5px var(--f-num);color:var(--muted);white-space:nowrap}
+.pal.off .orb{filter:grayscale(.85) opacity(.35)}
+.pal.off small{opacity:.5}
+.rail-actions{padding:12px 14px;display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--edge)}
+.btn{font:600 13px var(--f-ui);padding:9px 10px;border-radius:10px;cursor:pointer;color:var(--ink);background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);transition:background .15s,filter .15s}
+.btn:hover{background:rgba(255,255,255,.14)}
+.btn.add:hover{filter:brightness(1.08);background:linear-gradient(160deg,#ffb3cb,#e86f97)}
+.btn.dashed{border-style:dashed}
+.btn.quiet{background:transparent;color:var(--muted);font-weight:500}
+.btn:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.hint{margin:2px 0 0;font-size:10.5px;line-height:1.45;color:var(--muted)}
+
+/* ---------- board ---------- */
+.board{position:relative;flex:1;min-width:0;overflow:hidden;touch-action:none;
+  background-color:var(--grid-bg);
+  background-image:linear-gradient(var(--grid-line) 1px,transparent 1px),linear-gradient(90deg,var(--grid-line) 1px,transparent 1px);
+  background-size:36px 36px;background-position:-1px -1px}
+.board::before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.35))}
+
+/* ---------- orbs ---------- */
+.orb{position:absolute;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-family:var(--f-ui);font-weight:800;letter-spacing:-.02em;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5);
+  background:var(--fill);cursor:grab;touch-action:none;
+  box-shadow:inset -5px -7px 12px rgba(0,0,0,.28),inset 5px 6px 10px rgba(255,255,255,.5),0 6px 14px rgba(0,0,0,.5)}
+.orb.dark{color:#16301b;text-shadow:0 1px 0 rgba(255,255,255,.6)}
+.orb::after{content:"";position:absolute;left:20%;top:12%;width:34%;height:22%;border-radius:50%;
+  background:radial-gradient(ellipse at center,rgba(255,255,255,.85),rgba(255,255,255,0) 70%);pointer-events:none}
+.orb.metal{box-shadow:inset -5px -7px 12px rgba(0,0,0,.35),inset 5px 6px 10px rgba(255,255,255,.7),0 5px 12px rgba(0,0,0,.35)}
+.orb.diamond{animation:shimmer 6s linear infinite}
+@keyframes shimmer{to{filter:hue-rotate(360deg)}}
+.item{position:absolute;transition:transform .12s}
+.item.dragging{z-index:50;cursor:grabbing;transform:scale(1.06)}
+.item.target{transform:scale(1.1)}
+.item.target.orb{outline:3px solid var(--focus);outline-offset:4px}
+.item.target.vessel{filter:drop-shadow(0 0 10px var(--focus))}
+.ghost{position:fixed;z-index:100;pointer-events:none;transform:scale(1.1)}
+.pop{animation:pop .22s ease-out}
+@keyframes pop{from{transform:scale(.4)}to{transform:scale(1)}}
+
+/* ---------- jars & piggy banks ---------- */
+.vessel{cursor:grab;touch-action:none}
+.vessel-art{position:absolute;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}
+.vessel-art.back{filter:drop-shadow(0 12px 16px rgba(0,0,0,.5))}
+.jar-fill{position:absolute;left:12%;right:12%;top:30%;bottom:4.5%;display:flex;flex-wrap:wrap-reverse;justify-content:center;align-content:flex-start;gap:1px;overflow:hidden;border-radius:0 0 14px 14px;pointer-events:none}
+.mini{flex:none;border-radius:50%;background:var(--fill);box-shadow:inset -2px -2px 4px rgba(0,0,0,.3),inset 1px 1px 3px rgba(255,255,255,.55)}
+.jar-label{position:absolute;left:17%;right:17%;top:31%;padding:5px 4px 6px;display:flex;flex-direction:column;align-items:center;gap:1px;
+  background:linear-gradient(#f1e6cb,#ddcba1);color:var(--label-ink);border-radius:3px;box-shadow:0 2px 5px rgba(0,0,0,.35);transform:rotate(-1.5deg)}
+.pot-name{width:100%;text-align:center;font:700 12.5px var(--f-ui);color:inherit;background:transparent;border:0;border-bottom:1.5px dashed transparent;padding:1px 0;-webkit-user-select:text;user-select:text;cursor:text}
+.pot-name:hover,.pot-name:focus{border-bottom-color:currentColor;outline:none}
+.pot-total{font:600 13px var(--f-num);font-variant-numeric:tabular-nums}
+.vessel.empty .jar-label{opacity:.85}
+.pig-text{position:absolute;left:17%;right:24%;top:31%;display:flex;flex-direction:column;align-items:center;gap:1px;color:var(--pig-ink);text-align:center}
+.pig-text .pot-total{font-size:14px}
+.pig-goal{display:flex;align-items:center;gap:3px;font:500 11px var(--f-num)}
+.pig-goal input{width:66px;font:600 11px var(--f-num);color:inherit;text-align:right;padding:1px 4px;border:0;border-radius:5px;background:rgba(255,255,255,.4);-webkit-user-select:text;user-select:text}
+.pig-goal input:focus{outline:2px solid var(--pig-ink)}
+.pig-pct{font:700 10.5px var(--f-ui);letter-spacing:.05em;text-transform:uppercase;opacity:.8}
+.vessel.done .vessel-art.back{filter:drop-shadow(0 0 14px rgba(255,211,107,.8)) drop-shadow(0 12px 16px rgba(0,0,0,.5))}
+
+/* ---------- toast ---------- */
+.toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));transform:translate(-50%,-20px);opacity:0;z-index:200;
+  max-width:calc(100vw - 32px);text-align:center;
+  background:var(--danger);color:#fff;font:700 15px var(--f-ui);padding:10px 18px;border-radius:18px;box-shadow:0 8px 24px rgba(0,0,0,.5);
+  transition:opacity .18s,transform .18s;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.toast.shake{animation:shake .35s}
+@keyframes shake{25%{margin-left:-8px}50%{margin-left:8px}75%{margin-left:-4px}}
+
+@media (max-height:820px){.hint{display:none}}
+@media (max-width:560px){
+  .rail{width:116px}
+  .budget,.goals,.rail-actions{padding-inline:8px}
+  .pal{width:auto;flex-direction:column;gap:2px}
+  .pal small{font-size:10px}
+  .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .orb.diamond,.pop,.toast.shake{animation:none}
+  .item{transition:none}
+}
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="glassBack" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="rgba(170,210,240,.20)"/><stop offset=".5" stop-color="rgba(170,210,240,.08)"/><stop offset="1" stop-color="rgba(170,210,240,.18)"/>
+    </linearGradient>
+    <linearGradient id="glassShine" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="rgba(255,255,255,.16)"/><stop offset=".25" stop-color="rgba(255,255,255,0)"/><stop offset=".85" stop-color="rgba(255,255,255,0)"/><stop offset="1" stop-color="rgba(255,255,255,.10)"/>
+    </linearGradient>
+    <linearGradient id="lidMetal" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#e3e7ec"/><stop offset=".45" stop-color="#9aa2ad"/><stop offset="1" stop-color="#5a616b"/>
+    </linearGradient>
+    <radialGradient id="pigBody" cx=".38" cy=".3" r=".8">
+      <stop offset="0" stop-color="#ffdbe7"/><stop offset=".45" stop-color="#f7a6c3"/><stop offset="1" stop-color="#d9668f"/>
+    </radialGradient>
+    <linearGradient id="coinFill" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="rgba(255,226,122,.85)"/><stop offset="1" stop-color="rgba(214,150,20,.75)"/>
+    </linearGradient>
+    <clipPath id="pigClip"><ellipse cx="70" cy="58" rx="52" ry="38"/></clipPath>
+  </defs>
+</svg>
+
+<div class="app">
+  <aside class="rail" id="rail">
+    <div class="budget">
+      <label for="balance">Dina pengar</label>
+      <input id="balance" inputmode="numeric" autocomplete="off" placeholder="0 kr">
+      <div class="left" id="leftBox"><span>Kvar att placera</span><strong id="left">0 kr</strong></div>
+    </div>
+    <div class="goals">
+      <label for="goalName">Sparmål</label>
+      <input id="goalName" autocomplete="off" maxlength="28" placeholder="Namn, t.ex. Resa">
+      <div class="goal-row">
+        <input id="goalAmount" inputmode="numeric" autocomplete="off" placeholder="Mål i kr" aria-label="Sparmålets belopp">
+        <button class="btn add" id="addGoal" type="button" aria-label="Lägg till spargris" title="Lägg till spargris">+</button>
+      </div>
+      <div class="goal-sum" id="goalSum"></div>
+      <ul class="goal-list" id="goalList"></ul>
+    </div>
+    <div class="palette" id="palette"></div>
+    <div class="rail-actions">
+      <button class="btn dashed" id="addPot" type="button">+ Tom burk</button>
+      <button class="btn quiet" id="reset" type="button">Rensa ytan</button>
+      <p class="hint">Släpp en blob på en annan för att skapa en burk. Dubbelklicka för att dela upp. Dra hit för att ta bort.</p>
+    </div>
+  </aside>
+  <main class="board" id="board" aria-label="Budgetyta"></main>
+</div>
+<div class="toast" id="toast" role="alert"></div>
+
+<script>
+(function(){
+const DENOMS=[
+  {v:10,      t:'10',   fill:'radial-gradient(circle at 32% 28%,#eaffea,#8fe58f 45%,#4cb85a)', cls:'dark'},
+  {v:25,      t:'25',   fill:'radial-gradient(circle at 32% 28%,#6fcf8a,#1f7a3a 50%,#0f4a22)'},
+  {v:50,      t:'50',   fill:'radial-gradient(circle at 32% 28%,#ffe3a8,#f2a33a 48%,#b86a12)'},
+  {v:100,     t:'100',  fill:'radial-gradient(circle at 32% 28%,#effaff,#8fd3fb 45%,#3d9bd6)', cls:'dark'},
+  {v:250,     t:'250',  fill:'radial-gradient(circle at 32% 28%,#6f8ee6,#1f3c9e 50%,#0e1f5c)'},
+  {v:500,     t:'500',  fill:'radial-gradient(circle at 32% 28%,#ff9b8f,#d92b2b 48%,#8a1010)'},
+  {v:1000,    t:'1k',   fill:'conic-gradient(from 210deg at 50% 50%,#7a4318,#e3a066,#a8622a,#f2c08f,#8a4c1d,#d48c4e,#7a4318)', cls:'metal'},
+  {v:5000,    t:'5k',   fill:'conic-gradient(from 210deg at 50% 50%,#8d949b,#f4f6f8,#a9b0b7,#ffffff,#8a9198,#dde1e5,#8d949b)', cls:'metal dark'},
+  {v:10000,   t:'10k',  fill:'conic-gradient(from 210deg at 50% 50%,#9a6a07,#ffe27a,#c8920e,#fff2b0,#a87908,#f1c43c,#9a6a07)', cls:'metal'},
+  {v:50000,   t:'50k',  fill:'conic-gradient(from 210deg at 50% 50%,#3e1366,#c78bff,#6a2aa8,#ecd2ff,#4d1a80,#a463e8,#3e1366)', cls:'metal'},
+  {v:100000,  t:'100k', fill:'conic-gradient(from 210deg at 50% 50%,#9c8268,#f3e6d6,#c4a888,#fffaf2,#a88d70,#e3cdb2,#9c8268)', cls:'metal dark'},
+  {v:500000,  t:'500k', fill:'radial-gradient(circle at 32% 28%,#ffb3c2,#c3123a 40%,#6e0018 78%,#3d000c)', cls:'metal'},
+  {v:1000000, t:'1M',   fill:'conic-gradient(from 0deg,#e8fbff,#bfefff,#ffffff,#f3d9ff,#e6fbff,#c9fff1,#ffffff,#ffe9f6,#e8fbff)', cls:'metal dark diamond'}
+];
+const BY_V=Object.fromEntries(DENOMS.map((d,i)=>[d.v,{...d,i}]));
+const KEY='orb-budget-v1';
+const TOO_MUCH='Den här blobbens värde överskrider det inskrivna beloppet';
+const $=id=>document.getElementById(id);
+const board=$('board'), rail=$('rail'), palette=$('palette'), balanceIn=$('balance');
+const fmt=n=>n.toLocaleString('sv-SE')+' kr';
+const sum=a=>a.reduce((x,y)=>x+y,0);
+const parseKr=s=>parseInt(String(s).replace(/[^\d]/g,''),10)||0;
+const orbSize=v=>34+BY_V[v].i*4;
+const potSize=total=>Math.round(124+11*Math.log10(total+1));
+const isPig=it=>it.type==='pot'&&it.goal!=null;
+let uid=1;
+
+/* ---------- state ---------- */
+let state=load()||sample();
+function sample(){
+  return {balance:15000,items:[
+    {id:uid++,type:'pot',name:'Exempel: Hyra',orbs:[5000,1000,1000,500],x:250,y:220},
+    {id:uid++,type:'pot',name:'Exempel: Mat',orbs:[1000,500,250,100,100],x:450,y:380},
+    {id:uid++,type:'pot',name:'Resa till Japan',goal:20000,orbs:[1000,1000,500],x:560,y:160},
+    {id:uid++,type:'orb',v:100,x:230,y:470},
+    {id:uid++,type:'orb',v:50,x:300,y:500}
+  ]};
+}
+function load(){
+  try{const s=JSON.parse(localStorage.getItem(KEY));
+    if(s&&Array.isArray(s.items)){s.items.forEach(it=>uid=Math.max(uid,it.id+1));return s;}
+  }catch(e){}
+  return null;
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+const placed=()=>state.items.reduce((s,it)=>s+(it.type==='orb'?it.v:sum(it.orbs)),0);
+const remaining=()=>state.balance-placed();
+const find=id=>state.items.find(it=>it.id===id);
+const removeItem=id=>{state.items=state.items.filter(it=>it.id!==id);};
+const nextPotName=()=>'Pot '+(state.items.filter(i=>i.type==='pot'&&!isPig(i)).length+1);
+function freeSpot(){const w=board.clientWidth,h=board.clientHeight;return {x:w*(.3+Math.random()*.4),y:h*(.3+Math.random()*.4)};}
+
+/* ---------- toast ---------- */
+let toastTimer;
+function toast(msg){
+  const t=$('toast');t.textContent=msg;t.classList.remove('shake');void t.offsetWidth;
+  t.classList.add('show','shake');clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2600);
+}
+
+/* ---------- artwork ---------- */
+const JAR_PATH='M26 26 H74 Q90 28 90 46 V112 Q90 126 76 126 H24 Q10 126 10 112 V46 Q10 28 26 26 Z';
+let ridges='';for(let x=26;x<=74;x+=4)ridges+=`<line x1="${x}" y1="7" x2="${x}" y2="18" stroke="rgba(0,0,0,.2)" stroke-width="1"/>`;
+const JAR_BACK=`<svg class="vessel-art back" viewBox="0 0 100 130" aria-hidden="true"><path d="${JAR_PATH}" fill="url(#glassBack)"/></svg>`;
+const JAR_FRONT=`<svg class="vessel-art" viewBox="0 0 100 130" aria-hidden="true">
+  <path d="${JAR_PATH}" fill="url(#glassShine)" stroke="rgba(225,240,255,.55)" stroke-width="1.6"/>
+  <path d="M17 52 Q15.5 84 18 114" stroke="rgba(255,255,255,.5)" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <path d="M84 58 V80" stroke="rgba(255,255,255,.25)" stroke-width="2.5" stroke-linecap="round"/>
+  <path d="M20 121 Q50 128 80 121" stroke="rgba(255,255,255,.18)" stroke-width="1.5" fill="none"/>
+  <rect x="24" y="17" width="52" height="9" rx="3" fill="rgba(200,225,245,.15)" stroke="rgba(225,240,255,.5)" stroke-width="1.2"/>
+  <rect x="21" y="3" width="58" height="16" rx="4" fill="url(#lidMetal)"/>${ridges}
+  <rect x="23" y="4.5" width="54" height="3" rx="1.5" fill="rgba(255,255,255,.45)"/>
+</svg>`;
+function pigSvg(p){
+  const h=(76*p).toFixed(1), y=(96-76*p).toFixed(1);
+  return `<svg class="vessel-art back" viewBox="0 0 140 112" aria-hidden="true">
+  <path d="M21 54 c-9 -1 -12 -11 -5 -12 c6 -1 5 8 -1 7" stroke="#e07a9c" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <rect x="32" y="80" width="15" height="24" rx="6" fill="#cf5f87"/>
+  <rect x="88" y="80" width="15" height="24" rx="6" fill="#cf5f87"/>
+  <path d="M84 30 L92 9 L103 31 Z" fill="#cf5f87"/>
+  <ellipse cx="70" cy="58" rx="52" ry="38" fill="url(#pigBody)"/>
+  <rect x="18" y="${y}" width="104" height="${h}" fill="url(#coinFill)" clip-path="url(#pigClip)"/>
+  <rect x="44" y="84" width="15" height="22" rx="6" fill="#ee8db0"/>
+  <rect x="99" y="82" width="15" height="22" rx="6" fill="#ee8db0"/>
+  <path d="M93 29 L103 9 L111 33 Z" fill="#f7a6c3" stroke="#d9668f" stroke-width="1"/>
+  <ellipse cx="121" cy="62" rx="11" ry="13" fill="#f283a7" stroke="#cf5f87" stroke-width="1.2"/>
+  <ellipse cx="118" cy="62" rx="1.8" ry="3.4" fill="#9c3a5f"/><ellipse cx="124" cy="62" rx="1.8" ry="3.4" fill="#9c3a5f"/>
+  <circle cx="103" cy="46" r="3.4" fill="#3a1424"/><circle cx="104.2" cy="44.8" r="1.1" fill="#fff"/>
+  <rect x="57" y="22.5" width="26" height="5" rx="2.5" fill="#7a2a48"/>
+  <ellipse cx="46" cy="37" rx="20" ry="6" fill="rgba(255,255,255,.38)" transform="rotate(-14 46 37)"/>
+</svg>`;
+}
+
+/* ---------- rendering ---------- */
+function makeOrb(v,size){
+  const d=BY_V[v], el=document.createElement('div');
+  el.className='orb '+(d.cls||'');
+  el.style.setProperty('--fill',d.fill);
+  el.style.width=el.style.height=size+'px';
+  el.style.fontSize=Math.max(11,size*(d.t.length>3?.26:.32))+'px';
+  el.textContent=d.t;
+  return el;
+}
+function buildPalette(){
+  palette.innerHTML='';
+  DENOMS.forEach(d=>{
+    const row=document.createElement('div');row.className='pal';row.dataset.v=d.v;
+    const o=makeOrb(d.v,44);o.title=fmt(d.v);o.setAttribute('role','button');o.setAttribute('aria-label','Lägg till '+fmt(d.v));o.tabIndex=0;
+    const s=document.createElement('small');s.textContent=fmt(d.v);
+    row.append(o,s);palette.append(row);
+    o.addEventListener('pointerdown',e=>startPaletteDrag(e,d.v));
+    o.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();spawn(d.v,null,null);}});
+  });
+}
+function dims(it){
+  if(it.type==='orb'){const s=orbSize(it.v);return {w:s,h:s};}
+  const base=potSize(sum(it.orbs));
+  if(isPig(it)){const w=base+60;return {w,h:Math.round(w*.8)};}
+  return {w:base,h:Math.round(base*1.3)};
+}
+function clampPos(it,d){
+  const W=board.clientWidth,H=board.clientHeight,rx=d.w/2+4,ry=d.h/2+4;
+  it.x=Math.min(Math.max(it.x,rx),Math.max(rx,W-rx));
+  it.y=Math.min(Math.max(it.y,ry),Math.max(ry,H-ry));
+}
+function guard(el){el.addEventListener('pointerdown',e=>e.stopPropagation());}
+function nameInput(it,label){
+  const n=document.createElement('input');n.className='pot-name';n.value=it.name;n.id='pot-name-'+it.id;n.maxLength=28;
+  n.setAttribute('aria-label',label);guard(n);
+  n.addEventListener('input',()=>{it.name=n.value;save();updateGoals();});
+  n.addEventListener('keydown',e=>{if(e.key==='Enter')n.blur();});
+  return n;
+}
+function buildJar(it){
+  const total=sum(it.orbs);
+  const el=document.createElement('div');el.className='item vessel jar'+(it.orbs.length?'':' empty');
+  el.insertAdjacentHTML('beforeend',JAR_BACK);
+  const fill=document.createElement('div');fill.className='jar-fill';
+  [...it.orbs].sort((a,b)=>b-a).slice(0,160).forEach(v=>{
+    const m=document.createElement('i');m.className='mini';const s=15+BY_V[v].i*1.5;
+    m.style.width=m.style.height=s+'px';m.style.setProperty('--fill',BY_V[v].fill);fill.append(m);
+  });
+  el.append(fill);
+  el.insertAdjacentHTML('beforeend',JAR_FRONT);
+  const label=document.createElement('div');label.className='jar-label';
+  const tot=document.createElement('div');tot.className='pot-total';tot.textContent=fmt(total);
+  label.append(nameInput(it,'Burkens namn'),tot);el.append(label);
+  el.title=it.orbs.length?'Dubbelklicka för att tömma burken':'Tom burk – släpp blobs här';
+  return el;
+}
+function buildPig(it){
+  const saved=sum(it.orbs),p=it.goal>0?Math.min(1,saved/it.goal):0,done=it.goal>0&&saved>=it.goal;
+  const el=document.createElement('div');el.className='item vessel pig'+(done?' done':'');
+  el.innerHTML=pigSvg(p);
+  const txt=document.createElement('div');txt.className='pig-text';
+  const tot=document.createElement('div');tot.className='pot-total';tot.textContent=fmt(saved);
+  const goal=document.createElement('label');goal.className='pig-goal';
+  const gi=document.createElement('input');gi.inputMode='numeric';gi.id='pig-goal-'+it.id;gi.value=it.goal.toLocaleString('sv-SE');
+  gi.setAttribute('aria-label','Sparmål i kronor');guard(gi);
+  gi.addEventListener('focus',()=>{gi.value=it.goal||'';gi.select();});
+  gi.addEventListener('input',()=>{it.goal=parseKr(gi.value);save();updateGoals();});
+  gi.addEventListener('keydown',e=>{if(e.key==='Enter')gi.blur();});
+  gi.addEventListener('blur',()=>render());
+  goal.append('av ',gi,' kr');
+  const pct=document.createElement('div');pct.className='pig-pct';pct.textContent=done?'Mål nått!':Math.floor(p*100)+' %';
+  txt.append(nameInput(it,'Sparmålets namn'),tot,goal,pct);el.append(txt);
+  el.title='Spargris – släpp blobs här. Dubbelklicka för att ta ut pengarna.';
+  return el;
+}
+function render(popId){
+  board.innerHTML='';
+  state.items.forEach(it=>{
+    const d=dims(it);clampPos(it,d);
+    let el;
+    if(it.type==='orb'){el=makeOrb(it.v,d.w);el.classList.add('item');el.title=fmt(it.v)+' – dubbelklicka för att dela';}
+    else el=isPig(it)?buildPig(it):buildJar(it);
+    el.style.width=d.w+'px';el.style.height=d.h+'px';
+    el.dataset.id=it.id;
+    el.style.left=(it.x-d.w/2)+'px';el.style.top=(it.y-d.h/2)+'px';
+    if(it.id===popId)el.classList.add('pop');
+    el.addEventListener('pointerdown',e=>startItemDrag(e,it,el));
+    board.append(el);
+  });
+  updateMoney();updateGoals();
+}
+function updateMoney(){
+  const rem=remaining();
+  $('left').textContent=fmt(rem);
+  $('leftBox').classList.toggle('neg',rem<0);
+  palette.querySelectorAll('.pal').forEach(r=>r.classList.toggle('off',+r.dataset.v>rem));
+  if(document.activeElement!==balanceIn)balanceIn.value=state.balance?state.balance.toLocaleString('sv-SE'):'';
+}
+function updateGoals(){
+  const pigs=state.items.filter(isPig);
+  const sumBox=$('goalSum'),list=$('goalList');
+  if(!pigs.length){sumBox.innerHTML='<p>Inga sparmål än.</p>';list.innerHTML='';return;}
+  const saved=sum(pigs.map(p=>Math.min(sum(p.orbs),p.goal))),goal=sum(pigs.map(p=>p.goal));
+  const pct=goal?Math.min(100,saved/goal*100):0;
+  sumBox.innerHTML=`<p><b>${fmt(saved)}</b> av ${fmt(goal)}</p><div class="bar"><i style="width:${pct}%"></i></div>`;
+  list.innerHTML='';
+  pigs.forEach(p=>{
+    const s=sum(p.orbs),q=p.goal?Math.min(100,Math.floor(s/p.goal*100)):0;
+    const li=document.createElement('li');if(p.goal&&s>=p.goal)li.className='done';
+    const n=document.createElement('span');n.textContent=p.name||'Sparmål';
+    const e=document.createElement('em');e.textContent=q+' %';
+    const b=document.createElement('div');b.className='bar';b.innerHTML=`<i style="width:${q}%"></i>`;
+    li.append(n,e,b);list.append(li);
+  });
+}
+
+/* ---------- hit testing ---------- */
+function targetAt(cx,cy,excludeId){
+  for(const el of document.elementsFromPoint(cx,cy)){
+    const item=el.closest&&el.closest('.item');
+    if(item&&+item.dataset.id!==excludeId)return item;
+  }
+  return null;
+}
+function overRail(cx){return cx<rail.getBoundingClientRect().right;}
+function boardPoint(cx,cy){const r=board.getBoundingClientRect();return {x:cx-r.left,y:cy-r.top,inside:cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom};}
+let hoverEl=null;
+function setHover(el){if(hoverEl===el)return;hoverEl&&hoverEl.classList.remove('target');hoverEl=el;el&&el.classList.add('target');}
+
+/* ---------- merging ---------- */
+function merge(src,dst){
+  // src is dropped onto dst. A piggy bank always survives a merge so its goal is kept.
+  if(src.type==='pot'&&dst.type==='pot'){
+    let keep=dst,drop=src;
+    if(isPig(src)&&!isPig(dst)){keep=src;drop=dst;keep.x=dst.x;keep.y=dst.y;}
+    keep.orbs.push(...drop.orbs);removeItem(drop.id);return keep.id;
+  }
+  if(dst.type==='pot'){dst.orbs.push(src.v);removeItem(src.id);return dst.id;}
+  if(src.type==='pot'){src.orbs.push(dst.v);src.x=dst.x;src.y=dst.y;removeItem(dst.id);return src.id;}
+  const pot={id:uid++,type:'pot',name:nextPotName(),orbs:[dst.v,src.v],x:dst.x,y:dst.y};
+  removeItem(src.id);
+  state.items[state.items.findIndex(i=>i.id===dst.id)]=pot;
+  return pot.id;
+}
+function scatter(values,cx,cy,minR){
+  const n=values.length,radius=Math.max(minR,(n*(orbSize(values[0])+8))/(2*Math.PI));
+  values.forEach((v,k)=>{
+    const a=(k/n)*Math.PI*2-Math.PI/2;
+    state.items.push({id:uid++,type:'orb',v,x:cx+Math.cos(a)*radius,y:cy+Math.sin(a)*radius});
+  });
+}
+function separate(pot){
+  if(!pot.orbs.length)return;
+  const d=dims(pot),sorted=[...pot.orbs].sort((a,b)=>b-a);
+  if(isPig(pot))pot.orbs=[];else removeItem(pot.id);
+  scatter(sorted,pot.x,pot.y,Math.max(d.w,d.h)/2+30);
+  save();render();
+}
+function breakDown(v){
+  // Prefer two halves; otherwise the fewest smaller blobs that add up exactly.
+  if(BY_V[v/2])return [v/2,v/2];
+  const out=[];let rest=v;
+  for(const d of [...DENOMS].reverse()){if(d.v>=v)continue;while(rest>=d.v){out.push(d.v);rest-=d.v;}}
+  return rest===0&&out.length>1?out:null;
+}
+function splitOrb(orb){
+  const parts=breakDown(orb.v);
+  if(!parts){toast(fmt(orb.v)+' går inte att dela');return;}
+  removeItem(orb.id);scatter(parts,orb.x,orb.y,28);
+  save();render();
+}
+
+/* ---------- spawning from palette ---------- */
+function spawn(v,cx,cy,targetEl){
+  if(v>remaining()){toast(TOO_MUCH);return;}
+  const p=cx==null?freeSpot():boardPoint(cx,cy);
+  const orb={id:uid++,type:'orb',v,x:p.x,y:p.y};
+  state.items.push(orb);
+  let pop=orb.id;
+  if(targetEl){const dst=find(+targetEl.dataset.id);if(dst)pop=merge(orb,dst);}
+  save();render(pop);
+}
+function startPaletteDrag(e,v){
+  e.preventDefault();
+  const sx=e.clientX,sy=e.clientY;let ghost=null,moved=false;
+  const move=ev=>{
+    if(!moved&&Math.hypot(ev.clientX-sx,ev.clientY-sy)<6)return;
+    if(!moved){moved=true;ghost=makeOrb(v,orbSize(v));ghost.classList.add('ghost');document.body.append(ghost);}
+    const s=orbSize(v);ghost.style.left=(ev.clientX-s/2)+'px';ghost.style.top=(ev.clientY-s/2)+'px';
+    setHover(boardPoint(ev.clientX,ev.clientY).inside?targetAt(ev.clientX,ev.clientY,-1):null);
+  };
+  const up=ev=>{
+    window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);window.removeEventListener('pointercancel',up);
+    const tgt=hoverEl;setHover(null);
+    if(ghost)ghost.remove();
+    if(ev.type==='pointercancel')return;
+    if(!moved){spawn(v,null,null);return;}
+    if(boardPoint(ev.clientX,ev.clientY).inside)spawn(v,ev.clientX,ev.clientY,tgt);
+  };
+  window.addEventListener('pointermove',move);window.addEventListener('pointerup',up);window.addEventListener('pointercancel',up);
+}
+
+/* ---------- dragging items on the board ---------- */
+let lastTap={id:null,t:0};
+function startItemDrag(e,it,el){
+  if(e.button>0)return;
+  e.preventDefault();
+  if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('.board'))document.activeElement.blur();
+  const d=dims(it),start=boardPoint(e.clientX,e.clientY);
+  const offX=start.x-it.x,offY=start.y-it.y;let moved=false;
+  el.setPointerCapture(e.pointerId);
+  const move=ev=>{
+    const p=boardPoint(ev.clientX,ev.clientY);
+    if(!moved&&Math.hypot(p.x-start.x,p.y-start.y)<5)return;
+    if(!moved){moved=true;el.classList.add('dragging');el.classList.remove('pop');}
+    it.x=p.x-offX;it.y=p.y-offY;
+    el.style.left=(it.x-d.w/2)+'px';el.style.top=(it.y-d.h/2)+'px';
+    const trash=overRail(ev.clientX);rail.classList.toggle('drop-trash',trash);
+    setHover(trash?null:targetAt(ev.clientX,ev.clientY,it.id));
+  };
+  const up=ev=>{
+    el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);el.removeEventListener('pointercancel',up);
+    const tgt=hoverEl;setHover(null);rail.classList.remove('drop-trash');el.classList.remove('dragging');
+    if(!moved){
+      const now=performance.now();
+      if(lastTap.id===it.id&&now-lastTap.t<350){lastTap={id:null,t:0};if(it.type==='pot')separate(it);else splitOrb(it);}
+      else lastTap={id:it.id,t:now};
+      return;
+    }
+    lastTap={id:null,t:0};
+    if(ev.type!=='pointercancel'&&overRail(ev.clientX)){removeItem(it.id);save();render();return;}
+    let pop=null;
+    if(tgt&&ev.type!=='pointercancel'){const dst=find(+tgt.dataset.id);if(dst)pop=merge(it,dst);}
+    save();render(pop);
+  };
+  el.addEventListener('pointermove',move);el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);
+}
+
+/* ---------- controls ---------- */
+balanceIn.addEventListener('focus',()=>{balanceIn.value=state.balance||'';balanceIn.select();});
+balanceIn.addEventListener('input',()=>{state.balance=parseKr(balanceIn.value);save();updateMoney();});
+balanceIn.addEventListener('blur',updateMoney);
+balanceIn.addEventListener('keydown',e=>{if(e.key==='Enter')balanceIn.blur();});
+
+const goalName=$('goalName'),goalAmount=$('goalAmount');
+goalAmount.addEventListener('input',()=>{const n=parseKr(goalAmount.value);goalAmount.value=n?n.toLocaleString('sv-SE'):'';});
+function addGoal(){
+  const goal=parseKr(goalAmount.value);
+  if(!goal){toast('Skriv in hur mycket du vill spara');goalAmount.focus();return;}
+  const n=state.items.filter(isPig).length+1;
+  const pig={id:uid++,type:'pot',name:goalName.value.trim()||'Sparmål '+n,goal,orbs:[],...freeSpot()};
+  state.items.push(pig);goalName.value='';goalAmount.value='';
+  save();render(pig.id);
+}
+$('addGoal').addEventListener('click',addGoal);
+[goalName,goalAmount].forEach(i=>i.addEventListener('keydown',e=>{if(e.key==='Enter')addGoal();}));
+
+$('addPot').addEventListener('click',()=>{
+  const pot={id:uid++,type:'pot',name:nextPotName(),orbs:[],...freeSpot()};
+  state.items.push(pot);save();render(pot.id);
+});
+$('reset').addEventListener('click',()=>{state.items=[];save();render();});
+window.addEventListener('resize',()=>render());
+
+buildPalette();render();
+})();
+</script>
+</body>
+</html>
